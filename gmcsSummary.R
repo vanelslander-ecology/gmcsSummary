@@ -70,9 +70,6 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
         dir.create(outDir, recursive = TRUE)
       }
 
-      if (!"Biomass_core" %in% names(sim$modules)) {
-        stop("gmcsSummary requires Biomass_core to be run before it.")
-      }
       if (is.null(sim$gmcsSummaryByYear) ||
           is.null(sim$gmcsSummaryByYearSpecies)) {
         stop(

@@ -7,7 +7,7 @@ defineModule(sim, list(
     person(c("Ian", "MS"), "Eddy", email = "ian.eddy@nrcan-rncan.gc.ca", role = "ctb")
   ),
   childModules = character(0),
-  version = list(gmcsSummary = "0.2.0.9000"),
+  version = list(gmcsSummary = "0.3.0.9000"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
@@ -26,40 +26,80 @@ defineModule(sim, list(
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = "gmcsSummaryByYear", objectClass = "data.table",
-                 desc = paste(
-                   "Summaries by year of gmcs predictions produced by Biomass_core.",
-                   "Includes mean_* and median_* columns."
-                 )
-    ),
-    expectsInput(objectName = "gmcsSummaryByYearSpecies", objectClass = "data.table",
-                 desc = paste(
-                   "Species summaries (by year) of gmcs predictions produced by Biomass_core.",
-                   "Includes mean_* and median_* columns."
-                 )
-    )
+    expectsInput(objectName = "gmcsPredictions", objectClass = "list",
+                 desc = paste("Raw cohort-level GMCS predictions produced by Biomass_core."))
   ),
   outputObjects = bindrows(
+    createsOutput(objectName = "gmcsSummaryByYear", objectClass = "data.table",
+                  desc = paste("Year-level summaries of GMCS predictions, including capped and uncapped metrics.")),
+    createsOutput(objectName = "gmcsSummaryByYearSpecies", objectClass = "data.table",
+                  desc = paste("Species-by-year summaries of GMCS predictions, including capped and uncapped metrics.")),
+    
     createsOutput(objectName = "GMCS summary figures", objectClass = "png",
-                  desc = paste(
-                    "Time-series and species-faceted summary plots of mean and",
-                    "median GMCS mortality and growth predictions."
-                  )
-                  
-    )
+                  desc = paste("Time-series and species-faceted summary plots of mean and",
+                               "median GMCS mortality and growth predictions."))
   )
 ))
 
-
-## event types
-##   - type `init` is required for initialization
 
 doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
   switch(
     eventType,
     init = {
-      sim <- scheduleEvent(sim, end(sim), module = "gmcsSummary",
-                           eventType = "Plotting", eventPriority = .last())
+      sim <- scheduleEvent(sim, end(sim), module = "gmcsSummary", eventType = "Summarizing", eventPriority = .first())
+      sim <- scheduleEvent(sim, end(sim), module = "gmcsSummary", eventType = "Plotting", eventPriority = .last())
+    },
+    
+    Summarizing = {
+      
+      if (is.null(sim$gmcsPredictions) || length(sim$gmcsPredictions) == 0) {
+        stop("sim$gmcsPredictions not found or empty.")
+      }
+      
+      gmcs_dt <- data.table::rbindlist(sim$gmcsPredictions, fill = TRUE)
+      
+      gmcs_dt[, growthPredUncapped := fifelse( pred_historicalGrowth > 0,
+                                               (pred_currentGrowth / pred_historicalGrowth) * 100,
+                                               NA_real_)]
+      
+      gmcs_dt[, mortPredUncapped := fifelse(pred_historicalMortality > 0,
+                                            (pred_currentMortality / pred_historicalMortality) * 100,
+                                            NA_real_)]
+      
+      gmcs_dt[!is.finite(growthPredUncapped), growthPredUncapped := NA_real_]
+      gmcs_dt[!is.finite(mortPredUncapped),  mortPredUncapped  := NA_real_]
+      
+      year_summary <- gmcs_dt[, .(
+        mean_mortPred   = mean(mortPred, na.rm = TRUE),
+        median_mortPred = median(mortPred, na.rm = TRUE),
+        mean_growthPred   = mean(growthPred, na.rm = TRUE),
+        median_growthPred = median(growthPred, na.rm = TRUE),
+        mean_mortPredUncapped   = mean(mortPredUncapped, na.rm = TRUE),
+        median_mortPredUncapped = median(mortPredUncapped, na.rm = TRUE),
+        mean_growthPredUncapped   = mean(growthPredUncapped, na.rm = TRUE),
+        median_growthPredUncapped = median(growthPredUncapped, na.rm = TRUE)
+      ), by = climateYear]
+      
+      setnames(year_summary, "climateYear", "year")
+      
+      sim$gmcsSummaryByYear <-
+        data.table::rbind(sim$gmcsSummaryByYear, year_summary, fill = TRUE)
+      
+      species_summary <- gmcs_dt[, .(
+        mean_mortPred   = mean(mortPred, na.rm = TRUE),
+        median_mortPred = median(mortPred, na.rm = TRUE),
+        mean_growthPred   = mean(growthPred, na.rm = TRUE),
+        median_growthPred = median(growthPred, na.rm = TRUE),
+        mean_mortPredUncapped   = mean(mortPredUncapped, na.rm = TRUE),
+        median_mortPredUncapped = median(mortPredUncapped, na.rm = TRUE),
+        mean_growthPredUncapped   = mean(growthPredUncapped, na.rm = TRUE),
+        median_growthPredUncapped = median(growthPredUncapped, na.rm = TRUE)
+      ), by = .(speciesCode, climateYear)]
+      
+      setnames(species_summary, "climateYear", "year")
+      
+      sim$gmcsSummaryByYearSpecies <-
+        data.table::rbind(sim$gmcsSummaryByYearSpecies, species_summary, fill = TRUE)
     },
     
     Plotting = {
@@ -70,9 +110,7 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
           is.null(sim$gmcsSummaryByYearSpecies)) {
         stop(
           "Required GMCS summary objects not found in simList.\n",
-          "Ensure Biomass_core generated:\n",
-          "  - sim$gmcsSummaryByYear\n",
-          "  - sim$gmcsSummaryByYearSpecies"
+          "Ensure gmcsSummary Summarizing event ran successfully."
         )
       }
       
@@ -84,17 +122,14 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
         spDT   <- spDT[year %in% P(sim)$plotYears]
       }
       
-      ## mean over time
-      plotDataMean <- data.table::melt(
-        yearDT, id.vars = "year",
-        measure.vars = c("mean_mortPred", "mean_growthPred"),
-        variable.name = "Metric", value.name = "Value"
+      plotDataMean <- data.table::melt(yearDT, id.vars = "year",
+                                       measure.vars = c("mean_mortPred", "mean_growthPred"),
+                                       variable.name = "Metric", value.name = "Value"
       )
-      plotDataMean[, Metric :=
-                     fifelse(Metric == "mean_mortPred", "Mortality", "Growth")]
+      plotDataMean[, Metric := fifelse(Metric == "mean_mortPred", "Mortality", "Growth")]
       
       p_time_mean <- ggplot(plotDataMean, aes(x = year, y = Value, colour = Metric, group = Metric)) +
-        geom_line(linewidth = 1) + 
+        geom_line(linewidth = 1) +
         geom_point(size = 2) +
         facet_wrap(~Metric, scales = "free_y") +
         labs(title = "Mean Mortality and Growth Predictions",
@@ -107,17 +142,14 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
       ggsave(file.path(outDir, "ModelsOverTime_mean.png"),
              p_time_mean, width = 10, height = 6, dpi = 150)
       
-      ## median over time
-      plotDataMedian <- data.table::melt(
-        yearDT, id.vars = "year",
-        measure.vars = c("median_mortPred", "median_growthPred"),
-        variable.name = "Metric", value.name = "Value"
+      plotDataMedian <- data.table::melt(yearDT, id.vars = "year",
+                                         measure.vars = c("median_mortPred", "median_growthPred"),
+                                         variable.name = "Metric", value.name = "Value"
       )
-      plotDataMedian[, Metric :=
-                       fifelse(Metric == "median_mortPred", "Mortality", "Growth")]
+      plotDataMedian[, Metric := fifelse(Metric == "median_mortPred", "Mortality", "Growth")]
       
       p_time_median <- ggplot(plotDataMedian, aes(x = year, y = Value, colour = Metric, group = Metric)) +
-        geom_line(linewidth = 1) + 
+        geom_line(linewidth = 1) +
         geom_point(size = 2) +
         facet_wrap(~Metric, scales = "free_y") +
         labs(title = "Median Mortality and Growth Predictions",
@@ -195,4 +227,3 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
   )
   invisible(sim)
 }
-

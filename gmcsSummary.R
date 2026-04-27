@@ -59,50 +59,48 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
         stop("sim$gmcsPredictions not found or empty.")
       }
       
-      gmcs_dt <- data.table::rbindlist(sim$gmcsPredictions, fill = TRUE)
+      gmcs_dt <- data.table::rbindlist(sim$gmcsPredictions, fill = TRUE, use.names = TRUE,
+                                       idcol = "predictionGroup")  # keeps group name
       
-      gmcs_dt[, growthPredUncapped := fifelse( pred_historicalGrowth > 0,
-                                               (pred_currentGrowth / pred_historicalGrowth) * 100,
-                                               NA_real_)]
+      gmcs_dt[, growthPredUncapped := fifelse(pred_historicalGrowth > 0,
+                                              (pred_currentGrowth / pred_historicalGrowth) * 100, NA_real_)]
       
       gmcs_dt[, mortPredUncapped := fifelse(pred_historicalMortality > 0,
-                                            (pred_currentMortality / pred_historicalMortality) * 100,
-                                            NA_real_)]
+                                            (pred_currentMortality / pred_historicalMortality) * 100, NA_real_)]
       
       gmcs_dt[!is.finite(growthPredUncapped), growthPredUncapped := NA_real_]
-      gmcs_dt[!is.finite(mortPredUncapped),  mortPredUncapped  := NA_real_]
+      gmcs_dt[!is.finite(mortPredUncapped), mortPredUncapped := NA_real_]
       
-      year_summary <- gmcs_dt[, .(
-        mean_mortPred   = mean(mortPred, na.rm = TRUE),
-        median_mortPred = median(mortPred, na.rm = TRUE),
-        mean_growthPred   = mean(growthPred, na.rm = TRUE),
-        median_growthPred = median(growthPred, na.rm = TRUE),
-        mean_mortPredUncapped   = mean(mortPredUncapped, na.rm = TRUE),
-        median_mortPredUncapped = median(mortPredUncapped, na.rm = TRUE),
-        mean_growthPredUncapped   = mean(growthPredUncapped, na.rm = TRUE),
-        median_growthPredUncapped = median(growthPredUncapped, na.rm = TRUE)
-      ), by = climateYear]
+      #summary by year (all species)
+      year_summary <- gmcs_dt[, .(mean_mortPred = mean(mortPred, na.rm = TRUE),
+                                  median_mortPred = median(mortPred, na.rm = TRUE),
+                                  mean_growthPred = mean(growthPred, na.rm = TRUE),
+                                  median_growthPred = median(growthPred, na.rm = TRUE),
+                                  mean_mortPredUncapped = mean(mortPredUncapped, na.rm = TRUE),
+                                  median_mortPredUncapped = median(mortPredUncapped, na.rm = TRUE),
+                                  mean_growthPredUncapped = mean(growthPredUncapped, na.rm = TRUE),
+                                  median_growthPredUncapped = median(growthPredUncapped, na.rm = TRUE)),
+                              by = climateYear]
       
       setnames(year_summary, "climateYear", "year")
       
-      sim$gmcsSummaryByYear <-
-        data.table::rbind(sim$gmcsSummaryByYear, year_summary, fill = TRUE)
+      sim$gmcsSummaryByYear <- data.table::rbind(sim$gmcsSummaryByYear, year_summary, fill = TRUE)
       
-      species_summary <- gmcs_dt[, .(
-        mean_mortPred   = mean(mortPred, na.rm = TRUE),
-        median_mortPred = median(mortPred, na.rm = TRUE),
-        mean_growthPred   = mean(growthPred, na.rm = TRUE),
-        median_growthPred = median(growthPred, na.rm = TRUE),
-        mean_mortPredUncapped   = mean(mortPredUncapped, na.rm = TRUE),
-        median_mortPredUncapped = median(mortPredUncapped, na.rm = TRUE),
-        mean_growthPredUncapped   = mean(growthPredUncapped, na.rm = TRUE),
-        median_growthPredUncapped = median(growthPredUncapped, na.rm = TRUE)
-      ), by = .(speciesCode, climateYear)]
+      #summary by species (per year)
+      species_summary <- gmcs_dt[, .(mean_mortPred = mean(mortPred, na.rm = TRUE),
+                                     median_mortPred = median(mortPred, na.rm = TRUE),
+                                     mean_growthPred = mean(growthPred, na.rm = TRUE),
+                                     median_growthPred = median(growthPred, na.rm = TRUE),
+                                     mean_mortPredUncapped = mean(mortPredUncapped, na.rm = TRUE),
+                                     median_mortPredUncapped = median(mortPredUncapped, na.rm = TRUE),
+                                     mean_growthPredUncapped = mean(growthPredUncapped, na.rm = TRUE),
+                                     median_growthPredUncapped = median(growthPredUncapped, na.rm = TRUE)), 
+                                 by = .(speciesCode, climateYear)]
       
       setnames(species_summary, "climateYear", "year")
       
-      sim$gmcsSummaryByYearSpecies <-
-        data.table::rbind(sim$gmcsSummaryByYearSpecies, species_summary, fill = TRUE)
+      sim$gmcsSummaryByYearSpecies <- data.table::rbind(sim$gmcsSummaryByYearSpecies, species_summary, fill = TRUE)
+      
     },
     
     Plotting = {

@@ -123,7 +123,7 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
         spDT   <- spDT[year %in% P(sim)$plotYears]
       }
       
-      if (P(sim)$plotPredictionType %in% c("capped", "both")) {
+      if (P(sim)$P(sim)$plotPredictionCapping %in% c("capped", "both")) {
         
         plotDataMean <- data.table::melt(yearDT, id.vars = "year",
                                          measure.vars = c("mean_mortPred", "mean_growthPred"),
@@ -223,7 +223,7 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
         ggsave(file.path(outDir, "species_median_Growth.png"),
                p_growth_median, width = 12, height = 8, dpi = 150)
       }
-      if (P(sim)$plotPredictionType %in% c("uncapped", "both")) {
+      if (P(sim)$P(sim)$plotPredictionCapping %in% c("uncapped", "both")) {
         
         plotDataMean <- data.table::melt(yearDT, id.vars = "year",
                                          measure.vars = c("mean_mortPredUncapped", "mean_growthPredUncapped"),

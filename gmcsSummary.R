@@ -49,13 +49,11 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
   switch(
     eventType,
     init = {
-      sim <- scheduleEvent(sim, end(sim), module = "gmcsSummary", eventType = "Summarizing", eventPriority = .last())
+      sim <- scheduleEvent(sim, start(sim), module = "gmcsSummary", eventType = "Summarizing", eventPriority = .last())
+      sim <- scheduleEvent(sim, end(sim), module = "gmcsSummary", eventType = "Plotting", eventPriority = .last())
     },
     
     Summarizing = {
-      
-      outDir <- figurePath(sim)
-      if (!dir.exists(outDir)) dir.create(outDir, recursive = TRUE)
       
       if (is.null(sim$gmcsPredictions) || length(sim$gmcsPredictions) == 0) {
         stop("sim$gmcsPredictions not found or empty.")
@@ -63,6 +61,8 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
       
       gmcs_dt <- data.table::rbindlist(sim$gmcsPredictions, 
                                        fill = TRUE, use.names = TRUE, idcol = "predictionGroup")
+      
+      gmcs_dt[, year := time(sim)]
       
       gmcs_dt[, growthPredUncapped := data.table::fifelse(pred_historicalGrowth > 0,
                                                           (pred_currentGrowth / pred_historicalGrowth) * 100, NA_real_)]
@@ -83,9 +83,7 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
         median_mortPredUncapped = stats::median(mortPredUncapped, na.rm = TRUE),
         mean_growthPredUncapped = mean(growthPredUncapped, na.rm = TRUE),
         median_growthPredUncapped = stats::median(growthPredUncapped, na.rm = TRUE)),
-        by = climateYear]
-      
-      data.table::setnames(year_summary, "climateYear", "year")
+        by = year]
       
       if (is.null(sim$gmcsSummaryByYear)) {
         sim$gmcsSummaryByYear <- year_summary
@@ -103,15 +101,23 @@ doEvent.gmcsSummary <- function(sim, eventTime, eventType) {
         median_mortPredUncapped = stats::median(mortPredUncapped, na.rm = TRUE),
         mean_growthPredUncapped = mean(growthPredUncapped, na.rm = TRUE),
         median_growthPredUncapped = stats::median(growthPredUncapped, na.rm = TRUE)),
-        by = .(speciesCode, climateYear)]
-      
-      data.table::setnames(species_summary, "climateYear", "year")
+        by = .(speciesCode, year)]
       
       if (is.null(sim$gmcsSummaryByYearSpecies)) {
         sim$gmcsSummaryByYearSpecies <- species_summary
       } else {
         sim$gmcsSummaryByYearSpecies <- data.table::rbindlist(list(sim$gmcsSummaryByYearSpecies, species_summary), fill = TRUE)
       }
+      
+      if (time(sim) < end(sim)) {
+        sim <- scheduleEvent(sim, time(sim) + 1, module = "gmcsSummary", eventType = "Summarizing", eventPriority = .last())
+      }
+    },
+    
+    Plotting = {
+      
+      outDir <- figurePath(sim)
+      if (!dir.exists(outDir)) dir.create(outDir, recursive = TRUE)
       
       if (is.null(sim$gmcsSummaryByYear) ||
           is.null(sim$gmcsSummaryByYearSpecies)) {

@@ -26,7 +26,9 @@ defineModule(sim, list(
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = "gmcsPredictions", objectClass = "list",
-                 desc = paste("Raw cohort-level GMCS predictions produced by Biomass_core."))
+                 desc = paste("Raw cohort-level GMCS predictions produced by Biomass_core.",
+                              "Note that these predictions are capped by default and thus",
+                              "likely obfuscate outliers and errors in the data."))
   ),
   outputObjects = bindrows(
     createsOutput(objectName = "gmcsSummaryByYear", objectClass = "data.table",
